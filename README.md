@@ -8,6 +8,7 @@ Reusable Terraform modules for AWS infrastructure. All CI runs inside [`ghcr.io/
 |--------|---------|
 | [`regional-info`](./regional-info/) | Exposes current AWS region name, description, endpoint, and AZ list/count |
 | [`role-validator`](./role-validator/) | Exposes caller identity (account ID, ARN, user ID) for validating assumed roles |
+| [`test-module`](./test-module/) | Returns static test data for validation purposes (no cloud provider required) |
 
 Both are data-only modules — they read AWS state, create no resources.
 
