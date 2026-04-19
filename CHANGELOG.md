@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/hagzag/tf-modules/compare/v1.0.1...v1.1.0) (2026-04-19)
+
+
+### Features
+
+* add test_examples directory for validating modules ([5fdb3c1](https://github.com/hagzag/tf-modules/commit/5fdb3c11fd5980bb25a121a279317f6c606125e8))
+
 ## [1.0.1](https://github.com/hagzag/tf-modules/compare/v1.0.0...v1.0.1) (2026-04-19)
 
 
