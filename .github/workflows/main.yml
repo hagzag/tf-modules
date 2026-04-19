@@ -1,0 +1,166 @@
+name: Terraform modules release
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+  actions: read
+  pull-requests: write
+  statuses: write
+  packages: read # pull ghcr.io/hagzag/tools
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned toolchain image — bump via PR once a new hagzag/tools release is out.
+  TOOLS_IMAGE: ghcr.io/hagzag/tools:latest
+
+jobs:
+  # ----------------------------------------------------------------------
+  # Preflight: prove the toolchain image works end-to-end. Any missing
+  # binary or plugin here fails the pipeline before we run anything real.
+  # ----------------------------------------------------------------------
+  tools_smoke:
+    name: Smoke-test tools image
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/hagzag/tools:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - run: terraform -version
+      - run: terragrunt --version
+      - run: aws --version
+      - run: jq --version
+      - run: semantic-release --version
+      - name: semantic-release plugins are installed
+        run: |
+          set -euo pipefail
+          npm ls -g --depth=0 \
+            @semantic-release/commit-analyzer \
+            @semantic-release/release-notes-generator \
+            @semantic-release/changelog \
+            @semantic-release/git \
+            @semantic-release/exec \
+            @semantic-release/github
+
+  find_changed_directories:
+    name: Find changed terraform modules
+    needs: tools_smoke
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.set-dirs.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            **/*.tf
+
+      - name: Set directories
+        id: set-dirs
+        run: |
+          IFS=' ' read -ra FILES <<< '${{ steps.changed-files.outputs.all_changed_files }}'
+          unique_dirs=()
+          for file in "${FILES[@]}"; do
+            dir=$(dirname "$file")
+            if [[ ! " ${unique_dirs[@]} " =~ " $dir " ]]; then
+              unique_dirs+=("$dir")
+            fi
+          done
+          dirs_json=$(printf '%s\n' "${unique_dirs[@]}" | jq -R . | jq -s . | jq -c .)
+          if [ "$dirs_json" == "[]" ]; then
+            dirs_json='["."]'
+          fi
+          echo "dirs=$dirs_json" >> $GITHUB_OUTPUT
+
+      - name: Debug - Print directories
+        run: |
+          echo "Changed directories:"
+          echo '${{ steps.set-dirs.outputs.dirs }}' | jq .
+
+  terraform_fmt:
+    name: Terraform fmt
+    needs: find_changed_directories
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    container:
+      image: ghcr.io/hagzag/tools:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      matrix:
+        dir: ${{ fromJson(needs.find_changed_directories.outputs.dirs) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Terraform fmt
+        run: |
+          if [ -d "${{ matrix.dir }}" ]; then
+            terraform fmt -check
+          else
+            echo "Directory ${{ matrix.dir }} was deleted — skipping."
+            exit 0
+          fi
+        working-directory: ${{ matrix.dir }}
+
+  terraform_docs:
+    name: Render terraform docs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    # terraform-docs/gh-actions runs in its own container — no tools image needed.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Render terraform docs and push back to PR branch
+        uses: terraform-docs/gh-actions@v1.3.0
+        with:
+          output-file: README.md
+          output-method: replace
+          git-push: "true"
+          git-push-user-name: "github-actions[bot]"
+          git-push-user-email: "github-actions[bot]@users.noreply.github.com"
+          git-commit-message: "docs: update terraform docs"
+          find-dir: ${{ github.workspace }}
+
+  release:
+    name: Trigger semantic release
+    needs: [find_changed_directories, tools_smoke]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.find_changed_directories.outputs.dirs != '[""]'
+    container:
+      image: ghcr.io/hagzag/tools:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # semantic-release + all plugins come from the image — no install step needed.
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          semantic-release -r ${{ github.server_url }}/${{ github.repository }}.git
