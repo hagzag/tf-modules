@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/hagzag/tf-modules/compare/v1.0.0...v1.0.1) (2026-04-19)
+
+
+### Bug Fixes
+
+* add test-module for testing without cloud provider credentials ([4fc0d88](https://github.com/hagzag/tf-modules/commit/4fc0d88f878d80757de82143b1a3ab08fb55efaa))
+
 # 1.0.0 (2026-04-19)
 
 
