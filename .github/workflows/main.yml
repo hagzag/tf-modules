@@ -29,6 +29,7 @@ jobs:
   # ----------------------------------------------------------------------
   tools_smoke:
     name: Smoke-test tools image
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/hagzag/tools:latest
@@ -54,7 +55,8 @@ jobs:
 
   find_changed_directories:
     name: Find changed terraform modules
-    needs: tools_smoke
+    needs: [tools_smoke]
+    if: always() && (needs.tools_smoke.result == 'success' || needs.tools_smoke.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       dirs: ${{ steps.set-dirs.outputs.dirs }}
@@ -145,8 +147,9 @@ jobs:
   release:
     name: Trigger semantic release
     needs: [find_changed_directories, tools_smoke]
+    # tools_smoke is skipped on non-dispatch events — treat skipped as passing
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.find_changed_directories.outputs.dirs != '[""]' && (needs.tools_smoke.result == 'success' || needs.tools_smoke.result == 'skipped')
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.find_changed_directories.outputs.dirs != '[""]'
     container:
       image: ghcr.io/hagzag/tools:latest
       credentials:
