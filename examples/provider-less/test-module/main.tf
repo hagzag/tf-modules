@@ -1,6 +1,6 @@
 # Example usage of test-module module
 module "test" {
-  source = "../../test-module"
+  source = "../../../test-module"
 }
 
 # Output the values for verification

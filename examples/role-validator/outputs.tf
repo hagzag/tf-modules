@@ -1,8 +1,3 @@
-# Example usage of role-validator module
-module "identity" {
-  source = "../../role-validator"
-}
-
 # Output the values for verification
 output "account_id" {
   value = module.identity.account_id
