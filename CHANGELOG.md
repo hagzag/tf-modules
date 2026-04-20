@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/hagzag/tf-modules/compare/v1.1.0...v1.2.0) (2026-04-20)
+
+
+### Features
+
+* add examples directory for validating all modules (AWS and provider-less) ([a2426cc](https://github.com/hagzag/tf-modules/commit/a2426cc0ada4ee84137b19517d9cfe025b9e089b))
+
 # [1.1.0](https://github.com/hagzag/tf-modules/compare/v1.0.1...v1.1.0) (2026-04-19)
 
 
