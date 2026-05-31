@@ -1,0 +1,9 @@
+# .trivyignore — Trivy finding suppressions for tf-modules
+#
+# Format: one AVD/CVE ID per line, with a comment explaining why it's suppressed.
+# Example:
+#   AVD-AWS-0086  # S3 bucket: access logging not required for this ephemeral scratch bucket
+#
+# See https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#trivyignore
+#
+# This file is intentionally empty — all current HIGH/CRITICAL findings must be fixed.

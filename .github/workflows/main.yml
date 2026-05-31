@@ -12,7 +12,8 @@ permissions:
   actions: read
   pull-requests: write
   statuses: write
-  packages: read # pull ghcr.io/hagzag/tools
+  packages: read        # pull ghcr.io/hagzag/tools
+  security-events: write # upload Trivy SARIF to GitHub Security tab
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -144,11 +145,61 @@ jobs:
           git-commit-message: "docs: update terraform docs"
           find-dir: ${{ github.workspace }}
 
+  trivy_scan:
+    name: Trivy IaC scan
+    needs: find_changed_directories
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJson(needs.find_changed_directories.outputs.dirs) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Blocking scan: table output, fails on HIGH/CRITICAL ──────────────
+      - name: Trivy config scan — ${{ matrix.dir }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'config'
+          scan-ref: ${{ matrix.dir }}
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          format: 'table'
+          trivyignores: .trivyignore
+
+      # ── Non-blocking SARIF scan: populates GitHub Security tab ───────────
+      # Runs even if blocking scan found issues (so findings appear in Security)
+      - name: Trivy config scan — SARIF upload
+        uses: aquasecurity/trivy-action@v0.36.0
+        if: always()
+        with:
+          scan-type: 'config'
+          scan-ref: ${{ matrix.dir }}
+          severity: 'MEDIUM,HIGH,CRITICAL'
+          exit-code: '0'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          trivyignores: .trivyignore
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-iac-${{ matrix.dir }}'
+
   release:
     name: Trigger semantic release
-    needs: [find_changed_directories, tools_smoke]
+    needs: [find_changed_directories, tools_smoke, trivy_scan]
     # tools_smoke is skipped on non-dispatch events — treat skipped as passing
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.find_changed_directories.outputs.dirs != '[""]' && (needs.tools_smoke.result == 'success' || needs.tools_smoke.result == 'skipped')
+    # trivy_scan must pass — a HIGH/CRITICAL finding blocks release
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.find_changed_directories.outputs.dirs != '[""]' &&
+      (needs.tools_smoke.result == 'success' || needs.tools_smoke.result == 'skipped') &&
+      needs.trivy_scan.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/hagzag/tools:latest
